@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABCMeta
 from copy import copy
 import logging
-from typing import Any, Final, cast
+from typing import Any, cast
 
 from CasambiBt import ColorSource, Group, Unit, UnitControlType, UnitState, _operation
 
@@ -24,21 +24,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import CasambiApi
-from .const import CONF_IMPORT_GROUPS, DOMAIN
+from .const import CASA_LIGHT_CTRL_TYPES, CONF_IMPORT_GROUPS, DOMAIN
 from .entities import (
     CasambiEntity,
     CasambiNetworkGroup,
     CasambiUnitEntity,
     TypedEntityDescription,
 )
-
-CASA_LIGHT_CTRL_TYPES: Final[list[UnitControlType]] = [
-    UnitControlType.DIMMER,
-    UnitControlType.RGB,
-    UnitControlType.WHITE,
-    UnitControlType.ONOFF,
-    UnitControlType.TEMPERATURE,
-]
 
 _LOGGER = logging.getLogger(__name__)
 

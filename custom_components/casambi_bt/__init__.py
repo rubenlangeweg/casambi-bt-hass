@@ -23,23 +23,9 @@ from homeassistant.exceptions import (
 from homeassistant.helpers.httpx_client import get_async_client
 
 from .connection_diagnostics import ConnectionDiagnostics
-from .const import DOMAIN, PLATFORMS
+from .const import DOMAIN, PLATFORMS, SUPPORTED_CONTROL_TYPES
 
 _LOGGER: Final = logging.getLogger(__name__)
-
-SUPPORTED_CONTROL_TYPES: Final = frozenset(
-    {
-        UnitControlType.DIMMER,
-        UnitControlType.WHITE,
-        UnitControlType.RGB,
-        UnitControlType.ONOFF,
-        UnitControlType.TEMPERATURE,
-        UnitControlType.VERTICAL,
-        UnitControlType.COLORSOURCE,
-        UnitControlType.XY,
-    }
-)
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Casambi Bluetooth from a config entry."""

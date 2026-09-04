@@ -18,9 +18,11 @@ def _load_diagnostics_module():
     return module
 
 
+diagnostics_module = _load_diagnostics_module()
+
+
 def test_reconnect_counters_and_state_are_recorded() -> None:
     """Reconnect outcomes should update aggregate diagnostics."""
-    diagnostics_module = _load_diagnostics_module()
     state = diagnostics_module.ConnectionDiagnostics()
 
     state.record_disconnect()
@@ -43,7 +45,6 @@ def test_reconnect_counters_and_state_are_recorded() -> None:
 
 def test_unsupported_control_modes_are_aggregated_without_device_data() -> None:
     """Unsupported modes should be counted without identifying devices."""
-    diagnostics_module = _load_diagnostics_module()
     state = diagnostics_module.ConnectionDiagnostics()
 
     state.set_unsupported_control_modes(["UNKOWN", "SENSOR", "UNKOWN"])
@@ -56,7 +57,6 @@ def test_unsupported_control_modes_are_aggregated_without_device_data() -> None:
 
 def test_diagnostics_payload_contains_versions_but_no_credentials() -> None:
     """The payload should expose versions and aggregate inventory only."""
-    diagnostics_module = _load_diagnostics_module()
     state = diagnostics_module.ConnectionDiagnostics()
     state.record_connected()
 
@@ -104,7 +104,6 @@ def test_home_assistant_diagnostics_does_not_read_config_entry_data() -> None:
 
 def test_repeated_log_events_are_rate_limited() -> None:
     """Repeated events should be suppressed within the log interval."""
-    diagnostics_module = _load_diagnostics_module()
     state = diagnostics_module.ConnectionDiagnostics(log_interval_seconds=300)
 
     assert state.should_log("reconnect_skipped", now=1000)
