@@ -19,7 +19,7 @@ Then release the Home Assistant integration as `v0.3.0`. It is a minor release b
 
 ## Upgrade
 
-Publish the library fix first. Then update `manifest.json` to that immutable `casambi-bt` revision before tagging the integration.
+The dogfood build pins `manifest.json` to the immutable `casambi-bt` 0.3.3 commit. Publish the library fix before tagging the integration.
 
 After the integration release is available, update it through HACS and restart Home Assistant.
 

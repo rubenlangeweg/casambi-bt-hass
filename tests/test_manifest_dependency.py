@@ -2,13 +2,13 @@
 
 import json
 from pathlib import Path
-import re
 
 ROOT = Path(__file__).parents[1]
 MANIFEST = ROOT / "custom_components" / "casambi_bt" / "manifest.json"
 LIBRARY_REQUIREMENT = (
     "casambi-bt @ git+https://github.com/rubenlangeweg/casambi-bt.git@"
 )
+LIBRARY_REVISION = "ee6d832c33477d7ca195bdd33ff45478a4032319"
 
 
 def test_manifest_pins_library_to_immutable_fork_commit() -> None:
@@ -21,4 +21,4 @@ def test_manifest_pins_library_to_immutable_fork_commit() -> None:
     )
     revision = requirement.removeprefix(LIBRARY_REQUIREMENT)
 
-    assert re.fullmatch(r"[0-9a-f]{40}", revision)
+    assert revision == LIBRARY_REVISION
