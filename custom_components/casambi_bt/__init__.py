@@ -22,9 +22,23 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers.httpx_client import get_async_client
 
+from .connection_diagnostics import ConnectionDiagnostics
 from .const import DOMAIN, PLATFORMS
 
 _LOGGER: Final = logging.getLogger(__name__)
+
+SUPPORTED_CONTROL_TYPES: Final = frozenset(
+    {
+        UnitControlType.DIMMER,
+        UnitControlType.WHITE,
+        UnitControlType.RGB,
+        UnitControlType.ONOFF,
+        UnitControlType.TEMPERATURE,
+        UnitControlType.VERTICAL,
+        UnitControlType.COLORSOURCE,
+        UnitControlType.XY,
+    }
+)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -79,6 +93,7 @@ class CasambiApi:
         self._cancel_bluetooth_callback: Callable[[], None] | None = None
         self._reconnect_lock = asyncio.Lock()
         self._first_disconnect = True
+        self.connection_diagnostics = ConnectionDiagnostics()
 
     def _register_bluetooth_callback(self) -> None:
         self._cancel_bluetooth_callback = bluetooth.async_register_callback(
@@ -90,6 +105,7 @@ class CasambiApi:
 
     async def connect(self) -> None:
         """Connect to the Casmabi network."""
+        self.connection_diagnostics.record_connecting()
         try:
             device = bluetooth.async_ble_device_from_address(
                 self.hass, self.address, connectable=True
@@ -103,19 +119,26 @@ class CasambiApi:
             await self.casa.connect(device, self.password)
             self._first_disconnect = True
         except BluetoothError as err:
+            self.connection_diagnostics.record_disconnected()
             raise ConfigEntryNotReady("Failed to use bluetooth") from err
         except NetworkNotFoundError as err:
+            self.connection_diagnostics.record_disconnected()
             raise ConfigEntryNotReady(
                 f"Network with address {self.address} wasn't found"
             ) from err
         except AuthenticationError as err:
+            self.connection_diagnostics.record_disconnected()
             raise ConfigEntryAuthFailed(
                 f"Failed to authenticate to network {self.address}"
             ) from err
         except Exception as err:  # pylint: disable=broad-except
+            self.connection_diagnostics.record_disconnected()
             raise ConfigEntryError(
                 f"Unexpected error creating network {self.address}"
             ) from err
+
+        self.connection_diagnostics.record_connected()
+        self._refresh_unsupported_control_modes()
 
         # Only register bluetooth callback after connection.
         # Otherwise we get an immediate callback and attempt two connections at once.
@@ -166,9 +189,13 @@ class CasambiApi:
             except Exception:
                 _LOGGER.exception("Error during disconnect.")
             self.casa.unregisterUnitChangedHandler(self._unit_changed_handler)
+            self.connection_diagnostics.record_disconnected()
 
     @callback
     def _casa_disconnect(self) -> None:
+        self.connection_diagnostics.record_disconnect()
+        if self.connection_diagnostics.should_log("disconnect"):
+            _LOGGER.warning("Casambi Bluetooth connection lost; reconnect scheduled")
         if self._first_disconnect:
             self._first_disconnect = False
             self.conf_entry.async_create_background_task(
@@ -180,26 +207,30 @@ class CasambiApi:
 
         async with self._reconnect_lock:
             if self.casa.connected:
+                self.connection_diagnostics.record_reconnect_skip("already_connected")
+                self._log_reconnect_skip()
                 return
 
-        _LOGGER.debug("Starting delayed reconnect.")
         device = bluetooth.async_ble_device_from_address(self.hass, self.address)
         if device is not None:
-            try:
-                await self.try_reconnect()
-            except Exception:
-                _LOGGER.exception("Error during reconnect. This is not unusual.")
+            await self.try_reconnect()
         else:
-            _LOGGER.debug("Skipping reconnect. HA reports device not present.")
+            self.connection_diagnostics.record_reconnect_skip("device_not_present")
+            self._log_reconnect_skip()
 
     async def try_reconnect(self) -> None:
         """Attemtps to reconnect to the Casambi network. Disconnects first to ensure a consitent state."""
         if self._reconnect_lock.locked():
+            self.connection_diagnostics.record_reconnect_skip("already_in_progress")
+            self._log_reconnect_skip()
             return
 
         # Use locking to ensure that only one reconnect can happen at a time.
         # Not sure if this is necessary.
         await self._reconnect_lock.acquire()
+        self.connection_diagnostics.record_reconnect_attempt()
+        if self.connection_diagnostics.should_log("reconnect_attempt"):
+            _LOGGER.info("Attempting Casambi Bluetooth reconnect")
 
         try:
             try:
@@ -209,8 +240,41 @@ class CasambiApi:
             except AttributeError:
                 _LOGGER.debug("Unexpected failure during disconnect.")
             await self.connect()
+        except Exception:  # noqa: BLE001
+            self.connection_diagnostics.record_reconnect_failure()
+            if self.connection_diagnostics.should_log("reconnect_failure"):
+                _LOGGER.warning(
+                    "Casambi Bluetooth reconnect failed; see diagnostics counters"
+                )
+        else:
+            self.connection_diagnostics.record_reconnect_success()
+            if self.connection_diagnostics.should_log("reconnect_success"):
+                _LOGGER.info("Casambi Bluetooth reconnect succeeded")
         finally:
             self._reconnect_lock.release()
+
+    def _log_reconnect_skip(self) -> None:
+        """Log reconnect skips without allowing advertisement log spam."""
+        if self.connection_diagnostics.should_log("reconnect_skip"):
+            _LOGGER.debug("Casambi Bluetooth reconnect skipped; see diagnostics state")
+
+    def _refresh_unsupported_control_modes(self) -> None:
+        """Record aggregate control modes not exposed by this integration."""
+        unsupported_modes = [
+            control.type.name
+            for unit in self.casa.units
+            for control in unit.unitType.controls
+            if control.type not in SUPPORTED_CONTROL_TYPES
+        ]
+        self.connection_diagnostics.set_unsupported_control_modes(unsupported_modes)
+        if unsupported_modes and self.connection_diagnostics.should_log(
+            "unsupported_control_modes"
+        ):
+            mode_counts = self.connection_diagnostics.unsupported_control_modes
+            summary = ", ".join(
+                f"{mode}={count}" for mode, count in mode_counts.items()
+            )
+            _LOGGER.warning("Unsupported Casambi control modes observed: %s", summary)
 
     def register_unit_updates(self, unit: Unit, c: Callable[[Unit], None]) -> None:
         """Register a callback for unit updates.
