@@ -36,7 +36,4 @@ async def async_get_config_entry_diagnostics(
         integration_version=integration.version or "unknown",
         library_version=_library_version(),
         cache_version=CACHE_VERSION,
-        unit_count=len(api.casa.units),
-        group_count=len(api.casa.groups),
-        scene_count=len(api.casa.scenes),
     )
