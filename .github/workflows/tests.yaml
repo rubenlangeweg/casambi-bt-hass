@@ -41,6 +41,13 @@ jobs:
         shell: bash
         run: |
           requirement="$(python -c 'import json; print(json.load(open("custom_components/casambi_bt/manifest.json"))["requirements"][0])')"
-          python -m pip install pytest pytest-asyncio "homeassistant==2026.9.0" "$requirement"
+          python -m pip install \
+            pytest \
+            pytest-asyncio \
+            "homeassistant==2026.9.0" \
+            "aiousbwatcher==1.1.2" \
+            "serialx==1.9.0" \
+            "aiohasupervisor==0.6.0" \
+            "$requirement"
       - name: Smoke-test real integration imports
         run: python -m pytest -q tests/test_home_assistant_runtime.py
