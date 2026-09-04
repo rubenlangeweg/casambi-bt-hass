@@ -16,12 +16,15 @@ from .connection_diagnostics import build_diagnostics_payload
 from .const import DOMAIN
 
 
-def _library_version() -> str:
+def _get_library_version() -> str:
     """Return the installed library version."""
     try:
         return version("casambi-bt")
     except PackageNotFoundError:
         return "unknown"
+
+
+LIBRARY_VERSION = _get_library_version()
 
 
 async def async_get_config_entry_diagnostics(
@@ -34,6 +37,6 @@ async def async_get_config_entry_diagnostics(
     return build_diagnostics_payload(
         api.connection_diagnostics,
         integration_version=integration.version or "unknown",
-        library_version=_library_version(),
+        library_version=LIBRARY_VERSION,
         cache_version=CACHE_VERSION,
     )

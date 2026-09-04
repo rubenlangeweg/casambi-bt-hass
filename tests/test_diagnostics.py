@@ -134,7 +134,14 @@ async def test_home_assistant_diagnostics_entrypoint_excludes_sensitive_values(
         "async_get_integration",
         lambda _hass, _domain: _async_value(SimpleNamespace(version="0.2.3")),
     )
-    monkeypatch.setattr(modules.diagnostics, "_library_version", lambda: "0.3.2")
+    monkeypatch.setattr(modules.diagnostics, "LIBRARY_VERSION", "0.3.2")
+    monkeypatch.setattr(
+        modules.diagnostics,
+        "version",
+        lambda _distribution: pytest.fail(
+            "diagnostics must not read package metadata on the event loop"
+        ),
+    )
 
     payload = await modules.diagnostics.async_get_config_entry_diagnostics(hass, entry)
 
