@@ -85,25 +85,85 @@ def test_disconnect_callback_counts_and_schedules_only_once(
 
 
 @pytest.mark.asyncio
-async def test_delayed_reconnect_records_missing_device_without_attempt(
+async def test_delayed_reconnect_retries_until_device_returns(
     integration_modules, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A missing advertisement is a categorized skip, not a reconnect attempt."""
+    """A temporarily missing advertisement must not strand every entity offline."""
     api = _api(integration_modules)
-    monkeypatch.setattr(integration_modules.integration.asyncio, "sleep", AsyncMock())
+    sleep = AsyncMock()
+    devices = iter((None, object()))
+    monkeypatch.setattr(integration_modules.integration.asyncio, "sleep", sleep)
     monkeypatch.setattr(
         integration_modules.bluetooth,
         "async_ble_device_from_address",
-        lambda *_args, **_kwargs: None,
+        lambda *_args, **_kwargs: next(devices),
     )
-    api.try_reconnect = AsyncMock()
+
+    async def reconnect() -> None:
+        api.casa.connected = True
+
+    api.try_reconnect = AsyncMock(side_effect=reconnect)
 
     await api._delayed_reconnect()
 
-    api.try_reconnect.assert_not_awaited()
+    assert sleep.await_count == 2
+    api.try_reconnect.assert_awaited_once()
     snapshot = api.connection_diagnostics.snapshot()["connection"]
     assert snapshot["reconnect_skips"] == 1
     assert snapshot["last_reconnect_result"] == "skipped_device_not_present"
+
+
+@pytest.mark.asyncio
+async def test_delayed_reconnect_retries_after_failed_attempt(
+    integration_modules, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed reconnect attempt must not leave every entity offline."""
+    api = _api(integration_modules)
+    sleep = AsyncMock()
+    attempts = 0
+
+    async def reconnect() -> None:
+        nonlocal attempts
+        attempts += 1
+        api.casa.connected = attempts == 2
+
+    monkeypatch.setattr(integration_modules.integration.asyncio, "sleep", sleep)
+    monkeypatch.setattr(
+        integration_modules.bluetooth,
+        "async_ble_device_from_address",
+        lambda *_args, **_kwargs: object(),
+    )
+    api.try_reconnect = AsyncMock(side_effect=reconnect)
+
+    await api._delayed_reconnect()
+
+    assert sleep.await_count == 2
+    assert api.try_reconnect.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_delayed_reconnect_stops_when_integration_unloads(
+    integration_modules, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The managed retry loop must stop when automatic reconnect is disabled."""
+    api = _api(integration_modules)
+
+    async def stop_after_sleep(_delay: int) -> None:
+        api._automatic_reconnect_enabled = False
+
+    device_lookup = AsyncMock()
+    monkeypatch.setattr(
+        integration_modules.integration.asyncio, "sleep", stop_after_sleep
+    )
+    monkeypatch.setattr(
+        integration_modules.bluetooth,
+        "async_ble_device_from_address",
+        device_lookup,
+    )
+
+    await api._delayed_reconnect()
+
+    device_lookup.assert_not_called()
 
 
 @pytest.mark.asyncio

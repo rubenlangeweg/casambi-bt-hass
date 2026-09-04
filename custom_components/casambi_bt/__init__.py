@@ -81,6 +81,7 @@ class CasambiApi:
         self._casa_callbacks_registered = False
         self._reconnect_lock = asyncio.Lock()
         self._first_disconnect = True
+        self._automatic_reconnect_enabled = True
         self.connection_diagnostics = ConnectionDiagnostics()
 
     def _register_bluetooth_callback(self) -> None:
@@ -179,6 +180,7 @@ class CasambiApi:
 
     async def disconnect(self) -> None:
         """Disconnects from the controller and disables automatic reconnect."""
+        self._automatic_reconnect_enabled = False
         async with self._reconnect_lock:
             if self._cancel_bluetooth_callback is not None:
                 self._cancel_bluetooth_callback()
@@ -208,20 +210,29 @@ class CasambiApi:
             )
 
     async def _delayed_reconnect(self) -> None:
-        await asyncio.sleep(30)
+        while self._automatic_reconnect_enabled:
+            await asyncio.sleep(30)
 
-        async with self._reconnect_lock:
-            if self.casa.connected:
-                self.connection_diagnostics.record_reconnect_skip("already_connected")
-                self._log_reconnect_skip()
+            if not self._automatic_reconnect_enabled:
                 return
 
-        device = bluetooth.async_ble_device_from_address(self.hass, self.address)
-        if device is not None:
+            async with self._reconnect_lock:
+                if self.casa.connected:
+                    self.connection_diagnostics.record_reconnect_skip(
+                        "already_connected"
+                    )
+                    self._log_reconnect_skip()
+                    return
+
+            device = bluetooth.async_ble_device_from_address(self.hass, self.address)
+            if device is None:
+                self.connection_diagnostics.record_reconnect_skip("device_not_present")
+                self._log_reconnect_skip()
+                continue
+
             await self.try_reconnect()
-        else:
-            self.connection_diagnostics.record_reconnect_skip("device_not_present")
-            self._log_reconnect_skip()
+            if self.casa.connected:
+                return
 
     async def try_reconnect(self) -> None:
         """Attemtps to reconnect to the Casambi network. Disconnects first to ensure a consitent state."""
