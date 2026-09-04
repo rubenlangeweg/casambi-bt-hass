@@ -27,6 +27,7 @@ from .const import DOMAIN, PLATFORMS, SUPPORTED_CONTROL_TYPES
 
 _LOGGER: Final = logging.getLogger(__name__)
 
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Casambi Bluetooth from a config entry."""
     api = CasambiApi(hass, entry, entry.data[CONF_ADDRESS], entry.data[CONF_PASSWORD])
@@ -196,10 +197,12 @@ class CasambiApi:
     @callback
     def _casa_disconnect(self) -> None:
         self.connection_diagnostics.record_disconnect()
-        if self.connection_diagnostics.should_log("disconnect"):
-            _LOGGER.warning("Casambi Bluetooth connection lost; reconnect scheduled")
         if self._first_disconnect:
             self._first_disconnect = False
+            if self.connection_diagnostics.should_log("disconnect"):
+                _LOGGER.warning(
+                    "Casambi Bluetooth connection lost; reconnect scheduled"
+                )
             self.conf_entry.async_create_background_task(
                 self.hass, self._delayed_reconnect(), "Delayed reconnect"
             )

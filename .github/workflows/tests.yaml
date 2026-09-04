@@ -22,8 +22,25 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install test dependencies
-        run: python -m pip install pytest
+        run: python -m pip install pytest pytest-asyncio
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest -q --ignore=tests/test_home_assistant_runtime.py
       - name: Compile integration
         run: python -m compileall -q custom_components/casambi_bt
+
+  home-assistant-runtime:
+    name: Home Assistant 2026.9 runtime (Python 3.14)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install Home Assistant and manifest dependency
+        shell: bash
+        run: |
+          requirement="$(python -c 'import json; print(json.load(open("custom_components/casambi_bt/manifest.json"))["requirements"][0])')"
+          python -m pip install pytest pytest-asyncio "homeassistant==2026.9.0" "$requirement"
+      - name: Smoke-test real integration imports
+        run: python -m pytest -q tests/test_home_assistant_runtime.py

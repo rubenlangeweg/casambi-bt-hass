@@ -115,6 +115,8 @@ class ConnectionDiagnostics:
                 "reconnect_failures": self.reconnect_failures,
                 "reconnect_skips": self.reconnect_skips,
                 "last_reconnect_result": self.last_reconnect_result,
+                "reconnect_failure_categories": self.reconnect_failure_categories.copy(),
+                "last_reconnect_failure_category": self.last_reconnect_failure_category,
             },
             "unsupported_control_modes": self.unsupported_control_modes.copy(),
         }
@@ -126,30 +128,15 @@ def build_diagnostics_payload(
     integration_version: str,
     library_version: str,
     cache_version: int,
-    unit_count: int | None = None,
-    group_count: int | None = None,
-    scene_count: int | None = None,
 ) -> dict[str, Any]:
     """Build an aggregate payload without config-entry data or identifiers."""
     inventory = connection.inventory
-    payload = {
+    return {
         "versions": {
             "integration": integration_version,
             "library": library_version,
             "cache": cache_version,
         },
         **connection.snapshot(),
-        "inventory": {
-            "units": inventory["units"] if unit_count is None else unit_count,
-            "groups": inventory["groups"] if group_count is None else group_count,
-            "scenes": inventory["scenes"] if scene_count is None else scene_count,
-        },
+        "inventory": inventory.copy(),
     }
-    if connection.reconnect_failure_categories:
-        payload["connection"].update(
-            {
-                "reconnect_failure_categories": connection.reconnect_failure_categories.copy(),
-                "last_reconnect_failure_category": connection.last_reconnect_failure_category,
-            }
-        )
-    return payload
