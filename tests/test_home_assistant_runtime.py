@@ -13,6 +13,7 @@ from custom_components.casambi_bt import (
     diagnostics,
 )
 from custom_components.casambi_bt.connection_diagnostics import ConnectionDiagnostics
+from homeassistant.components import bluetooth as ha_bluetooth
 
 
 def test_home_assistant_runtime_imports_integration_entrypoints() -> None:
@@ -20,6 +21,7 @@ def test_home_assistant_runtime_imports_integration_entrypoints() -> None:
     assert inspect.iscoroutinefunction(async_setup_entry)
     assert inspect.iscoroutinefunction(async_unload_entry)
     assert inspect.iscoroutinefunction(diagnostics.async_get_config_entry_diagnostics)
+    assert inspect.iscoroutinefunction(ha_bluetooth.async_request_active_scan)
 
 
 @pytest.mark.asyncio
@@ -46,3 +48,4 @@ async def test_home_assistant_runtime_exercises_diagnostics_entrypoint(
 
     assert payload["inventory"] == {"units": 3, "groups": 1, "scenes": 2}
     assert payload["versions"]["integration"] == "0.2.3"
+    assert payload["versions"]["library"] == "0.3.3"

@@ -88,7 +88,7 @@ def test_disconnect_callback_counts_and_schedules_only_once(
 async def test_delayed_reconnect_retries_until_device_returns(
     integration_modules, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A temporarily missing advertisement must not strand every entity offline."""
+    """A missing advertisement triggers active rediscovery before reconnecting."""
     api = _api(integration_modules)
     sleep = AsyncMock()
     devices = iter((None, object()))
@@ -106,11 +106,11 @@ async def test_delayed_reconnect_retries_until_device_returns(
 
     await api._delayed_reconnect()
 
-    assert sleep.await_count == 2
+    sleep.assert_awaited_once_with(30)
+    integration_modules.bluetooth.async_request_active_scan.assert_awaited_once_with(
+        api.hass
+    )
     api.try_reconnect.assert_awaited_once()
-    snapshot = api.connection_diagnostics.snapshot()["connection"]
-    assert snapshot["reconnect_skips"] == 1
-    assert snapshot["last_reconnect_result"] == "skipped_device_not_present"
 
 
 @pytest.mark.asyncio
@@ -164,6 +164,63 @@ async def test_delayed_reconnect_stops_when_integration_unloads(
     await api._delayed_reconnect()
 
     device_lookup.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delayed_reconnect_stops_when_unloaded_during_active_scan(
+    integration_modules, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unload during active discovery must not reconnect afterward."""
+    api = _api(integration_modules)
+    api.try_reconnect = AsyncMock()
+
+    async def unload_during_scan(_hass: object) -> None:
+        api._automatic_reconnect_enabled = False
+
+    monkeypatch.setattr(integration_modules.integration.asyncio, "sleep", AsyncMock())
+    monkeypatch.setattr(
+        integration_modules.bluetooth,
+        "async_ble_device_from_address",
+        lambda *_args, **_kwargs: None,
+    )
+    integration_modules.bluetooth.async_request_active_scan.side_effect = (
+        unload_during_scan
+    )
+
+    await api._delayed_reconnect()
+
+    api.try_reconnect.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_active_scan_does_not_replace_a_connection_it_restored(
+    integration_modules, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A callback connection during active discovery must remain connected."""
+    api = _api(integration_modules)
+    api.casa.disconnect = AsyncMock()
+    api.connect = AsyncMock()
+    devices = iter((None, object()))
+
+    async def restore_connection(_hass: object) -> None:
+        api.casa.connected = True
+
+    monkeypatch.setattr(integration_modules.integration.asyncio, "sleep", AsyncMock())
+    monkeypatch.setattr(
+        integration_modules.bluetooth,
+        "async_ble_device_from_address",
+        lambda *_args, **_kwargs: next(devices),
+    )
+    integration_modules.bluetooth.async_request_active_scan.side_effect = (
+        restore_connection
+    )
+
+    await api._delayed_reconnect()
+
+    api.casa.disconnect.assert_not_awaited()
+    api.connect.assert_not_awaited()
+    snapshot = api.connection_diagnostics.snapshot()["connection"]
+    assert snapshot["last_reconnect_result"] == "skipped_already_connected"
 
 
 @pytest.mark.asyncio

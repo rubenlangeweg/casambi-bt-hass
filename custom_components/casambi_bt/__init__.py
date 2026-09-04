@@ -224,7 +224,16 @@ class CasambiApi:
                     self._log_reconnect_skip()
                     return
 
-            device = bluetooth.async_ble_device_from_address(self.hass, self.address)
+            device = bluetooth.async_ble_device_from_address(
+                self.hass, self.address, connectable=True
+            )
+            if device is None:
+                await bluetooth.async_request_active_scan(self.hass)
+                if not self._automatic_reconnect_enabled:
+                    return
+                device = bluetooth.async_ble_device_from_address(
+                    self.hass, self.address, connectable=True
+                )
             if device is None:
                 self.connection_diagnostics.record_reconnect_skip("device_not_present")
                 self._log_reconnect_skip()
@@ -235,42 +244,45 @@ class CasambiApi:
                 return
 
     async def try_reconnect(self) -> None:
-        """Attemtps to reconnect to the Casambi network. Disconnects first to ensure a consitent state."""
+        """Reconnect to the Casambi network after first cleaning up its state."""
         if self._reconnect_lock.locked():
             self.connection_diagnostics.record_reconnect_skip("already_in_progress")
             self._log_reconnect_skip()
             return
 
-        # Use locking to ensure that only one reconnect can happen at a time.
-        # Not sure if this is necessary.
-        await self._reconnect_lock.acquire()
-        self.connection_diagnostics.record_reconnect_attempt()
-        if self.connection_diagnostics.should_log("reconnect_attempt"):
-            _LOGGER.info("Attempting Casambi Bluetooth reconnect")
+        async with self._reconnect_lock:
+            if self.casa.connected:
+                self.connection_diagnostics.record_reconnect_skip("already_connected")
+                self._log_reconnect_skip()
+                return
 
-        try:
+            self.connection_diagnostics.record_reconnect_attempt()
+            if self.connection_diagnostics.should_log("reconnect_attempt"):
+                _LOGGER.info("Attempting Casambi Bluetooth reconnect")
+
             try:
-                await self.casa.disconnect()
-            # HACK: This is a workaround for https://github.com/lkempf/casambi-bt-hass/issues/26
-            # We don't actually need to disconnect except to clean up so this should be ok to ignore.
-            except AttributeError:
-                _LOGGER.debug("Unexpected failure during disconnect.")
-            await self.connect()
-        except Exception:  # noqa: BLE001
-            failure_category = self.connection_diagnostics.record_reconnect_failure()
-            if self.connection_diagnostics.should_log(
-                f"reconnect_failure_{failure_category}"
-            ):
-                _LOGGER.warning(
-                    "Casambi Bluetooth reconnect failed (%s); see diagnostics counters",
-                    failure_category,
+                try:
+                    await self.casa.disconnect()
+                # HACK: This is a workaround for https://github.com/lkempf/casambi-bt-hass/issues/26
+                # We don't actually need to disconnect except to clean up so this should be ok to ignore.
+                except AttributeError:
+                    _LOGGER.debug("Unexpected failure during disconnect.")
+                await self.connect()
+            except Exception:  # noqa: BLE001
+                failure_category = (
+                    self.connection_diagnostics.record_reconnect_failure()
                 )
-        else:
-            self.connection_diagnostics.record_reconnect_success()
-            if self.connection_diagnostics.should_log("reconnect_success"):
-                _LOGGER.info("Casambi Bluetooth reconnect succeeded")
-        finally:
-            self._reconnect_lock.release()
+                if self.connection_diagnostics.should_log(
+                    f"reconnect_failure_{failure_category}"
+                ):
+                    _LOGGER.warning(
+                        "Casambi Bluetooth reconnect failed (%s); see diagnostics counters",
+                        failure_category,
+                    )
+            else:
+                self.connection_diagnostics.record_reconnect_success()
+                if self.connection_diagnostics.should_log("reconnect_success"):
+                    _LOGGER.info("Casambi Bluetooth reconnect succeeded")
 
     def _log_reconnect_skip(self) -> None:
         """Log reconnect skips without allowing advertisement log spam."""

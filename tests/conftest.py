@@ -7,6 +7,7 @@ import importlib
 from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -95,6 +96,7 @@ def integration_modules(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         "homeassistant.components.bluetooth",
         BluetoothScanningMode=SimpleNamespace(PASSIVE="passive"),
         async_ble_device_from_address=lambda *_args, **_kwargs: None,
+        async_request_active_scan=AsyncMock(),
         async_register_callback=lambda *_args, **_kwargs: lambda: None,
     )
     casambi = _module(
