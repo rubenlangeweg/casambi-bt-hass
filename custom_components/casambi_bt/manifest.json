@@ -11,9 +11,9 @@
   "codeowners": ["@lkempf"],
   "config_flow": true,
   "dependencies": ["bluetooth_adapters"],
-  "documentation": "https://github.com/lkempf/casambi-bt-hass",
+  "documentation": "https://github.com/rubenlangeweg/casambi-bt-hass",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "requirements": ["casambi-bt @ git+https://github.com/rubenlangeweg/casambi-bt.git@feabfcfb14b27373c8667046ec339b49be9f9e1e"],
-  "version": "0.2.3"
+  "requirements": ["casambi-bt@git+https://github.com/rubenlangeweg/casambi-bt.git@e71c264371ce4cca73facc3ca9230fc200b66826"],
+  "version": "0.3.3"
 }

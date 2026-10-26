@@ -45,29 +45,34 @@ Supported control types:
 Not supported yet:
 - Switches
 - Sensors
-- Additional control types (e.g. temperature, ...)
-- Networks with classic firmware
 
 ## Linux / BlueZ passive scanning
 
-The reconnect callback only needs advertisements and now requests passive scanning, which avoids unnecessary active-scan windows while Casambi is connected.
+When using a local Bluetooth adapter on Linux, passive scanning requires
+BlueZ to expose the `org.bluez.AdvertisementMonitorManager1` D-Bus interface.
 
-On a Linux Bluetooth adapter, Home Assistant can use passive monitoring only if BlueZ exposes `org.bluez.AdvertisementMonitorManager1`. BlueZ marks it experimental on some systems. Where passive scanning is unavailable, HA may fall back to active scanning.
+BlueZ currently marks this interface as experimental. On distributions where
+experimental D-Bus interfaces are disabled, Home Assistant may therefore
+detect the adapter as not supporting passive scanning and fall back to active
+scanning.
 
-To enable the interface on a supported Linux host, add this to `/etc/bluetooth/main.conf`, then restart BlueZ and Home Assistant:
+If passive scanning is not available, enable the BlueZ experimental D-Bus
+interfaces in `/etc/bluetooth/main.conf`:
 
 ```ini
 [General]
 Experimental = true
 ```
 
-Verify availability with:
+Then restart BlueZ and Home Assistant.
+
+The interface can be checked with:
 
 ```
 busctl introspect org.bluez /org/bluez/hci0 | grep AdvertisementMonitorManager
 ```
 
-`KernelExperimental` is not required.
+KernelExperimental does not need to be enabled for this.
 
 ## Reporting issues
 
