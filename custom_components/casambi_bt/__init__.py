@@ -41,7 +41,9 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Casambi Bluetooth from a config entry."""
-    _LOGGER.info("Using casambi-bt %s.", package_version("casambi-bt"))
+    library_version = await hass.async_add_executor_job(package_version, "casambi-bt")
+    bleak_version = await hass.async_add_executor_job(package_version, "bleak")
+    _LOGGER.info("Using casambi-bt %s and bleak %s.", library_version, bleak_version)
     api = CasambiApi(hass, entry, entry.data[CONF_ADDRESS], entry.data[CONF_PASSWORD])
     await api.connect()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = api
