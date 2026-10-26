@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Callable, Iterable
+from importlib.metadata import version as package_version
 import inspect
 import logging
 from pathlib import Path
@@ -40,6 +41,7 @@ _LOGGER: Final = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Casambi Bluetooth from a config entry."""
+    _LOGGER.info("Using casambi-bt %s.", package_version("casambi-bt"))
     api = CasambiApi(hass, entry, entry.data[CONF_ADDRESS], entry.data[CONF_PASSWORD])
     await api.connect()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = api
@@ -88,6 +90,8 @@ class CasambiApi:
         self.casa = cast(Casambi, CasambiProxy(self, self._casa))
 
         self._callback_map: dict[int, list[Callable[[Unit], None]]] = {}
+        self._connection_callbacks: list[Callable[[], None]] = []
+        self._link_up = False
         self._cancel_bluetooth_callback: Callable[[], None] | None = None
         self._reconnect_task: asyncio.Task | None = None
 
@@ -112,6 +116,7 @@ class CasambiApi:
             self._casa.registerUnitChangedHandler(self._unit_changed_handler)
 
             await self._casa.connect(device, self.password)
+            self._link_up = True
         except BluetoothError as err:
             raise ConfigEntryNotReady("Failed to use bluetooth") from err
         except BluetoothDeviceNotFoundError as err:
@@ -136,7 +141,10 @@ class CasambiApi:
         """Start reconnection attempt to the Casmabi network."""
         backoff = RECONNECT_BACKOFF_START
         protocol_error = False
+        attempt = 0
         while True:
+            attempt += 1
+            _LOGGER.debug("Starting Bluetooth reconnect attempt %i.", attempt)
             try:
                 device = bluetooth.async_ble_device_from_address(
                     self.hass, self.address, connectable=True
@@ -145,6 +153,16 @@ class CasambiApi:
                     raise BluetoothDeviceNotFoundError  # noqa: TRY301
 
                 await self._casa.reconnect(device)
+                if not self._casa.connected:
+                    raise BluetoothError(  # noqa: TRY301
+                        "Reconnect returned without a connection."
+                    )
+                self._link_up = True
+                self._notify_connection_state()
+                _LOGGER.info(
+                    "Bluetooth connection recovered after %i reconnect attempts.",
+                    attempt,
+                )
                 protocol_error = False
                 break
             except BluetoothError:
@@ -171,13 +189,16 @@ class CasambiApi:
             except Exception as err:  # pylint: disable=broad-except
                 raise HomeAssistantError from err
 
+            _LOGGER.debug(
+                "Reconnect attempt %i failed; retrying in %s seconds.", attempt, backoff
+            )
             await asyncio.sleep(backoff)
             backoff = min(RECONNECT_BACKOFF_MAX, backoff * RECONNECT_BACKOFF_STEP)
 
     @property
     def available(self) -> bool:
         """Return True if the controller is available."""
-        return self._casa.connected
+        return self._link_up and self._casa.connected
 
     def get_units(
         self, control_types: list[UnitControlType] | None = None
@@ -204,6 +225,7 @@ class CasambiApi:
 
     async def disconnect(self) -> None:
         """Disconnects from the controller and disables automatic reconnect."""
+        self._link_up = False
         if (
             self._reconnect_task is not None
             and not self._reconnect_task.cancelled()
@@ -239,7 +261,24 @@ class CasambiApi:
 
     @callback
     def _casa_disconnect(self) -> None:
+        _LOGGER.info("Bluetooth disconnect observed; starting recovery.")
+        # The library still reports connected while invoking this callback.
+        self._link_up = False
+        self._notify_connection_state()
         self._schedule_reconnect()
+
+    def register_connection_updates(self, c: Callable[[], None]) -> None:
+        """Register a callback for connection state changes."""
+        self._connection_callbacks.append(c)
+
+    def unregister_connection_updates(self, c: Callable[[], None]) -> None:
+        """Unregister a callback for connection state changes."""
+        self._connection_callbacks.remove(c)
+
+    @callback
+    def _notify_connection_state(self) -> None:
+        for c in self._connection_callbacks:
+            c()
 
     def register_unit_updates(self, unit: Unit, c: Callable[[Unit], None]) -> None:
         """Register a callback for unit updates.
@@ -282,8 +321,13 @@ class CasambiApi:
             )
             return
         if self._reconnect_task is None or self._reconnect_task.done():
+            _LOGGER.debug(
+                "Scheduling reconnect task (library connected=%s).",
+                self._casa.connected,
+            )
+            # Let the library finish resetting its state after the callback.
             self._reconnect_task = self.conf_entry.async_create_background_task(
-                self.hass, self.reconnect(), "Reconnect"
+                self.hass, self.reconnect(), "Reconnect", eager_start=False
             )
 
 

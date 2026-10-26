@@ -50,6 +50,18 @@ class CasambiEntity(Entity, metaclass=ABCMeta):
     def _change_callback(self, _unit: CasambiUnit) -> None:
         self.schedule_update_ha_state(False)
 
+    async def async_added_to_hass(self) -> None:
+        """Follow the connection state of the network."""
+        self._api.register_connection_updates(self._connection_callback)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop following the connection state of the network."""
+        self._api.unregister_connection_updates(self._connection_callback)
+
+    @callback
+    def _connection_callback(self) -> None:
+        self.async_write_ha_state()
+
 
 class CasambiNetworkEntity(CasambiEntity, metaclass=ABCMeta):
     """Defines a Casambi Entity belonging to the network device."""
@@ -129,6 +141,7 @@ class CasambiNetworkGroup(CasambiNetworkEntity, metaclass=ABCMeta):
 
     async def async_added_to_hass(self) -> None:
         """Run when the group is about to be added to hass."""
+        await super().async_added_to_hass()
         group = cast("CasambiGroup", self._obj)
         for unit in group.units:
             self._api.register_unit_updates(unit, self._change_callback)
@@ -138,6 +151,7 @@ class CasambiNetworkGroup(CasambiNetworkEntity, metaclass=ABCMeta):
         group = cast("CasambiGroup", self._obj)
         for unit in group.units:
             self._api.unregister_unit_updates(unit, self._change_callback)
+        await super().async_will_remove_from_hass()
 
 
 class CasambiUnitEntity(CasambiEntity, metaclass=ABCMeta):
@@ -193,6 +207,7 @@ class CasambiUnitEntity(CasambiEntity, metaclass=ABCMeta):
 
     async def async_added_to_hass(self) -> None:
         """Run when the unit is about to be added to hass."""
+        await super().async_added_to_hass()
         unit = cast("CasambiUnit", self._obj)
         self._api.register_unit_updates(unit, self._change_callback)
 
@@ -200,3 +215,4 @@ class CasambiUnitEntity(CasambiEntity, metaclass=ABCMeta):
         """Run when the unit will be removed from hass."""
         unit = cast("CasambiUnit", self._obj)
         self._api.unregister_unit_updates(unit, self._change_callback)
+        await super().async_will_remove_from_hass()
