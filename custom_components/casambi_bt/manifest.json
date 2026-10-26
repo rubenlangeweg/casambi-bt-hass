@@ -14,6 +14,6 @@
   "documentation": "https://github.com/rubenlangeweg/casambi-bt-hass",
   "integration_type": "hub",
   "iot_class": "local_push",
-  "requirements": ["casambi-bt @ git+https://github.com/rubenlangeweg/casambi-bt.git@e71c264371ce4cca73facc3ca9230fc200b66826"],
-  "version": "0.3.1"
+  "requirements": ["casambi-bt@git+https://github.com/rubenlangeweg/casambi-bt.git@e71c264371ce4cca73facc3ca9230fc200b66826"],
+  "version": "0.3.2"
 }
